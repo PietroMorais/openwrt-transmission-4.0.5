@@ -1,0 +1,49 @@
+name: Build Transmission 4.0.5 for GL-MT3000
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib \
+            gettext git libncurses5-dev libssl-dev python3 python3-distutils \
+            rsync unzip zlib1g-dev
+
+      - name: Download OpenWrt SDK (23.05 - aarch64_cortex-a53)
+        run: |
+          wget https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/filogic/openwrt-sdk-23.05.0-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          tar -xf openwrt-sdk-23.05.0-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          mv openwrt-sdk-23.05.0-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64 sdk
+
+      - name: Copy our custom package to SDK
+        run: |
+          mkdir -p sdk/package/transmission
+          cp -r transmission/* sdk/package/transmission/
+
+      - name: Configure SDK feeds
+        run: |
+          cd sdk
+          echo "src-link custom $(pwd)/package" >> feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Build package
+        run: |
+          cd sdk
+          make defconfig
+          make package/transmission/compile -j$(nproc)
+
+      - name: Upload built packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: transmission-ipk
+          path: sdk/bin/packages/**/transmission*.ipk
